@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# switchboard .gitignore — HARD RULE: no user data, no auth, no PII reaches git.
+# The SQLite store holds ALL the user's messages across every channel; session
+# files + tokens + connector creds live on the VM. NONE of it is ever committed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Built binaries (cross-compiled in CI; never committed) ──
+/bin/
+/dist/
+/switchboardd
+/switchboard-mcp
+/match-eval
+/gate-eval
+/labelset-extract
+*.exe
+*.test
+*.out
+
+# ── The firehose store + WAL (ALL the user's messages — NEVER commit) ──
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/data/
+
+# ── Media blob store (downloaded attachments — PII) ──
+/media/
+
+# ── Auth / sessions / tokens / creds (per-connector) ──
+.env
+.env.*
+!.env.example
+*.session
+*.session.tmp
+*.token
+*-token
+tokens.json
+*-state.json
+gmail-state.json
+meta-state.json
+# Matrix appservice registration yamls carry as_token/hs_token secrets
+registrations/
+*registration*.yaml
+*registration*.yml
+# Lark config dir / user-token artifacts
+.lark-config*
+lark-config*/
+# private keys (deploy keys, etc.) must never be in-repo
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+
+# ── gbrain PGLite store + backups (do not touch / commit) ──
+*.pglite
+*.pglite.bak*
+brain.pglite*
+
+# ── QR codes (auth artifacts) ──
+*-qr.png
+
+# ── Eval / scratch artifacts ──
+*.jsonl
+people.json
+labeled.json
+scorecard.md
+
+# ── Agent harness / editor / OS noise ──
+.claude/
+.DS_Store
+*.swp
+*~
+
+# stray root build artifact (go build -o switchboard)
+/switchboard
+/comprehend
+
+# Private writer lease and local worktrees
+*.db.lock
+.worktrees/
+
+# Release verification scratch
+.release-check/
+__pycache__/

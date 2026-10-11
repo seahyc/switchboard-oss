@@ -1,0 +1,177 @@
+name: Standalone release artifacts
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go vet ./...
+
+  source:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: 0
+      VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Assemble corresponding buildable source
+        run: |
+          set -euo pipefail
+          source_dir="dist/switchboard-source-${VERSION}"
+          mkdir -p "$source_dir"
+          git archive HEAD | tar -x -C "$source_dir"
+          cd "$source_dir"
+          go mod vendor
+          cat > SOURCE_BUILD.md <<EOF
+          # Corresponding source and build instructions
+
+          Release version: ${VERSION}
+
+          This archive contains the Switchboard source and the vendored Go
+          dependency source used to build the matching standalone binaries.
+          The project is licensed under MIT. The bundled executable also
+          builds switchboardd with go.mau.fi/libsignal v0.2.2, licensed under GPL-3.0; see
+          THIRD_PARTY_NOTICES.md and the vendored license files.
+
+          With Go matching the version in go.mod, build for the current host:
+
+          \`\`\`sh
+          CGO_ENABLED=0 go build -mod=vendor -ldflags "-X main.Version=${VERSION}" -o switchboardd ./cmd/switchboardd
+          CGO_ENABLED=0 go build -mod=vendor -ldflags "-X main.Version=${VERSION}" -o switchboard ./cmd/switchboard
+          CGO_ENABLED=0 go build -mod=vendor -ldflags "-X main.Version=${VERSION}" -o switchboard-mcp ./cmd/switchboard-mcp
+          \`\`\`
+          EOF
+          mkdir ../source-bin
+          for name in switchboardd switchboard switchboard-mcp; do
+            GOPROXY=off GOSUMDB=off go build -mod=vendor \
+              -ldflags "-X main.Version=${VERSION}" -o "../source-bin/$name" "./cmd/$name"
+          done
+          python3 scripts/smoke-standalone.py --bin-dir ../source-bin --version "$VERSION"
+          cd ..
+          archive="switchboard-source-${VERSION}.tar.gz"
+          tar -czf "${archive}" "switchboard-source-${VERSION}"
+          shasum -a 256 "${archive}" > "${archive}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-source
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    needs: verify
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-24.04
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+          - goos: darwin
+            goarch: amd64
+            runner: macos-15-intel
+          - goos: darwin
+            goarch: arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build static binaries and archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          for name in switchboardd switchboard switchboard-mcp; do
+            CGO_ENABLED=0 go build \
+              -ldflags "-X main.Version=${VERSION}" \
+              -o "dist/package/${name}" "./cmd/${name}"
+          done
+          cp README.md LICENSE THIRD_PARTY_NOTICES.md SECURITY.md dist/package/
+          cp -R docs dist/package/
+          mkdir -p dist/package/scripts
+          cp scripts/install-standalone.sh scripts/switchboardd-standalone.service dist/package/scripts/
+          python3 scripts/package-licenses.py --out dist/package/third-party-licenses
+          archive="switchboard-${VERSION}-${GOOS}-${GOARCH}.tar.gz"
+          tar -C dist/package -czf "dist/${archive}" .
+          (cd dist && shasum -a 256 "${archive}" > "${archive}.sha256")
+      - name: Verify packaged binaries and standalone install
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+        run: |
+          set -euo pipefail
+          (cd dist && shasum -a 256 -c *.sha256)
+          mkdir -p dist/unpacked
+          tar -xzf dist/switchboard-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C dist/unpacked
+          python3 scripts/smoke-standalone.py --bin-dir dist/unpacked --version "$VERSION"
+          dist/unpacked/scripts/install-standalone.sh --bin-dir dist/unpacked \
+            --prefix "$RUNNER_TEMP/switchboard binary install" --state-dir "$RUNNER_TEMP/switchboard binary state"
+          python3 scripts/smoke-standalone.py --bin-dir "$RUNNER_TEMP/switchboard binary install/bin" --version "$VERSION"
+          install_args=(--prefix "$RUNNER_TEMP/switchboard install" --state-dir "$RUNNER_TEMP/switchboard state")
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            install_args+=(--systemd)
+          fi
+          ./scripts/install-standalone.sh "${install_args[@]}"
+          python3 scripts/smoke-standalone.py --bin-dir "$RUNNER_TEMP/switchboard install/bin" --version "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  draft-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build, source]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh release create "$TAG" --repo "$REPOSITORY" dist/*.tar.gz dist/*.sha256 --draft --verify-tag --title "$TAG"

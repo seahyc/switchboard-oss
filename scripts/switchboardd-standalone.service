@@ -1,0 +1,13 @@
+[Unit]
+Description=Switchboard local message index
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC@ -db @DB@ -qr-dir @STATE@ -api-token-file @TOKEN@
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

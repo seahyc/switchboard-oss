@@ -1,0 +1,17 @@
+{
+  "display_information": {
+    "name": "Switchboard Read Only"
+  },
+  "oauth_config": {
+    "scopes": {
+      "user": [
+        "channels:history",
+        "channels:read"
+      ]
+    }
+  },
+  "settings": {
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
