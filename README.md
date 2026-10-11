@@ -2,6 +2,16 @@
 
 Switchboard is a self-hosted message archive. It captures messages from connectors you explicitly enable, stores them in a local SQLite database, and provides a localhost API and CLI for browsing that archive. The default install starts with no connected accounts and needs no gbrain, Honcho, model server, or paid inference API.
 
+## Install a release
+
+For the simplest setup, download the archive for your operating system and CPU from [Releases](https://github.com/seahyc/switchboard-oss/releases). Verify its SHA-256 file, extract it into a new directory, then run:
+
+```sh
+./scripts/install-standalone.sh --bin-dir .
+```
+
+Release binaries do not require Go. Follow the [self-hosting guide](docs/SELF_HOSTING.md) to choose an archive, start the daemon, and connect WhatsApp or Slack.
+
 ## Quick start from source
 
 Requires Go 1.25.8 or newer on macOS or Linux. [Install Go](https://go.dev/dl/), then:
