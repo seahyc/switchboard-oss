@@ -112,6 +112,8 @@ func New(ctx context.Context, dbPath string, logger waLog.Logger) (*Connector, e
 	// default "whatsmeow". Read by whatsmeow at pairing time; safe to set once.
 	store.DeviceProps.Os = proto.String(deviceName)
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	// Secure the database and sidecars before SQLite opens them. Reopening and
+	// closing these paths afterward can drop SQLite's process-scoped POSIX locks.
 	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
 		if err := privatefs.PrepareFile(p); err != nil {
 			return nil, fmt.Errorf("whatsapp: secure session database file %q: %w", p, err)
@@ -122,12 +124,6 @@ func New(ctx context.Context, dbPath string, logger waLog.Logger) (*Connector, e
 	container, err := sqlstore.New(ctx, "sqlite", dsn, logger.Sub("sqlstore"))
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: open session store: %w", err)
-	}
-	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
-		if err := privatefs.PrepareFile(p); err != nil {
-			container.Close()
-			return nil, fmt.Errorf("whatsapp: secure session database file %q: %w", p, err)
-		}
 	}
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {

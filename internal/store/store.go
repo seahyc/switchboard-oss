@@ -67,6 +67,8 @@ func Open(path string) (*Store, error) {
 	if path != ":memory:" {
 		// Pre-create database and SQLite sidecars as private leaf files. This
 		// secures existing files too and rejects symlinks before SQLite opens them.
+		// Do not reopen/close these files after SQLite starts: POSIX close can drop
+		// SQLite's process-scoped locks and invalidate WAL coordination.
 		for _, p := range []string{path, path + "-wal", path + "-shm"} {
 			if err := privatefs.PrepareFile(p); err != nil {
 				return nil, fmt.Errorf("secure sqlite file %q: %w", p, err)
@@ -92,14 +94,6 @@ func Open(path string) (*Store, error) {
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
-	}
-	if path != ":memory:" {
-		for _, p := range []string{path, path + "-wal", path + "-shm"} {
-			if err := privatefs.PrepareFile(p); err != nil {
-				db.Close()
-				return nil, fmt.Errorf("secure sqlite file %q: %w", p, err)
-			}
-		}
 	}
 	// Open the dedicated read-only pool AFTER migrate (so the file exists). mode=ro +
 	// query_only make it physically unable to write — the hard guarantee behind the
