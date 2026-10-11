@@ -71,6 +71,7 @@ type Connector struct {
 	nextSink     int
 	qrPNG        []byte // latest login QR PNG, if awaiting scan
 	qrDetail     string
+	qrExpiresAt  time.Time
 	loginRunning bool // true while the self-renewing QR loop is active
 
 	// WhatsApp Business label registry, built from app-state events (whatsmeow
@@ -111,6 +112,8 @@ func New(ctx context.Context, dbPath string, logger waLog.Logger) (*Connector, e
 	// default "whatsmeow". Read by whatsmeow at pairing time; safe to set once.
 	store.DeviceProps.Os = proto.String(deviceName)
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	// Secure the database and sidecars before SQLite opens them. Reopening and
+	// closing these paths afterward can drop SQLite's process-scoped POSIX locks.
 	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
 		if err := privatefs.PrepareFile(p); err != nil {
 			return nil, fmt.Errorf("whatsapp: secure session database file %q: %w", p, err)
@@ -121,12 +124,6 @@ func New(ctx context.Context, dbPath string, logger waLog.Logger) (*Connector, e
 	container, err := sqlstore.New(ctx, "sqlite", dsn, logger.Sub("sqlstore"))
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: open session store: %w", err)
-	}
-	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
-		if err := privatefs.PrepareFile(p); err != nil {
-			container.Close()
-			return nil, fmt.Errorf("whatsapp: secure session database file %q: %w", p, err)
-		}
 	}
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {
@@ -842,8 +839,13 @@ func (c *Connector) runQRLoop(ctx context.Context, first chan<- connectors.Login
 			return
 		}
 
-		if c.consumeQR(qrChan, report) {
-			return // paired
+		paired, retry := c.consumeQR(qrChan, report)
+		if paired {
+			return
+		}
+		if !retry {
+			c.client.Disconnect()
+			return
 		}
 
 		// Window expired without a scan — reset and regenerate a fresh code.
@@ -858,9 +860,9 @@ func (c *Connector) runQRLoop(ctx context.Context, first chan<- connectors.Login
 
 // consumeQR drains one QR channel: each new code is rendered to PNG and cached
 // (and the very first across the whole loop is reported via report). Returns
-// true if pairing succeeded, false when the channel closes without success
-// (timeout/error) so the caller can regenerate.
-func (c *Connector) consumeQR(qrChan <-chan whatsmeow.QRChannelItem, report func(connectors.LoginStatus)) bool {
+// whether pairing succeeded and whether the caller should renew an expired QR.
+// Pairing failures remain visible until login is explicitly retried.
+func (c *Connector) consumeQR(qrChan <-chan whatsmeow.QRChannelItem, report func(connectors.LoginStatus)) (paired, retry bool) {
 	for item := range qrChan {
 		switch item.Event {
 		case "code":
@@ -871,7 +873,13 @@ func (c *Connector) consumeQR(qrChan <-chan whatsmeow.QRChannelItem, report func
 				c.mu.Lock()
 				c.qrPNG = png
 				c.qrDetail = st.Detail
+				c.qrExpiresAt = time.Now().Add(item.Timeout)
 				c.mu.Unlock()
+			} else {
+				c.setQRDetail("QR rendering failed")
+				c.log.Errorf("QR rendering failed: %v", err)
+				report(connectors.LoginStatus{NeedsAuth: true, Detail: "QR rendering failed"})
+				return false, false
 			}
 			report(st)
 		case "success":
@@ -880,25 +888,59 @@ func (c *Connector) consumeQR(qrChan <-chan whatsmeow.QRChannelItem, report func
 			c.qrDetail = "authenticated"
 			c.mu.Unlock()
 			report(connectors.LoginStatus{Connected: true, Detail: "authenticated"})
-			return true
+			return true, false
+		case "timeout":
+			c.setQRDetail("qr timeout")
+			return false, true
 		default:
-			// "timeout", "error", etc. Record and let the loop regenerate.
-			c.setQRDetail("qr " + item.Event)
+			detail := "qr " + item.Event
+			if item.Error != nil {
+				detail += ": " + pairingErrorDetail(item.Error)
+			}
+			c.setQRDetail(detail)
+			c.log.Errorf("WhatsApp pairing failed: %s", detail)
+			report(connectors.LoginStatus{NeedsAuth: true, Detail: detail})
+			return false, false
 		}
 	}
-	return false
+	return false, true
+}
+
+// pairingErrorDetail keeps protocol payloads and credentials out of status/logs.
+func pairingErrorDetail(err error) string {
+	var database *whatsmeow.PairDatabaseError
+	var protocol *whatsmeow.PairProtoError
+	switch {
+	case errors.As(err, &database):
+		return database.Message
+	case errors.As(err, &protocol):
+		return protocol.Message
+	case errors.Is(err, whatsmeow.ErrPairInvalidDeviceIdentityHMAC):
+		return "device identity verification failed"
+	case errors.Is(err, whatsmeow.ErrPairInvalidDeviceSignature):
+		return "device signature verification failed"
+	case errors.Is(err, whatsmeow.ErrPairRejectedLocally):
+		return "pairing rejected locally"
+	default:
+		return fmt.Sprintf("pairing failure (%T)", err)
+	}
 }
 
 // setQRDetail updates the cached human-readable login detail under lock.
 func (c *Connector) setQRDetail(detail string) {
 	c.mu.Lock()
 	c.qrDetail = detail
+	c.qrPNG = nil
+	c.qrExpiresAt = time.Time{}
 	c.mu.Unlock()
 }
 
 // Status reports current auth/connection state without driving login.
 func (c *Connector) Status(_ context.Context) (connectors.LoginStatus, error) {
 	c.mu.Lock()
+	if !c.qrExpiresAt.IsZero() && !time.Now().Before(c.qrExpiresAt) {
+		c.qrPNG = nil
+	}
 	qr := c.qrPNG
 	detail := c.qrDetail
 	c.mu.Unlock()

@@ -1787,6 +1787,7 @@ func drainWithTimeout(wait func(), d time.Duration, log *slog.Logger, what strin
 // or ctx is cancelled. Interactive (non-QR) auth surfaces its next-step Detail
 // in the logs for the human-in-the-loop step.
 func (d *Daemon) driveLogin(ctx context.Context, c connectors.Connector) error {
+	d.clearQR(c.Name())
 	if st, err := c.Status(ctx); err == nil && st.Connected {
 		return nil
 	}
@@ -1808,6 +1809,7 @@ func (d *Daemon) driveLogin(ctx context.Context, c connectors.Connector) error {
 		}
 		return nil
 	}
+	defer d.clearQR(c.Name())
 	// QR pairing in progress (WhatsApp): persist the rotating QR and poll until
 	// the background pairing flips the connector to connected, then Connect().
 	d.writeQR(c.Name(), st.QRPNG)
@@ -1831,11 +1833,24 @@ func (d *Daemon) driveLogin(ctx context.Context, c connectors.Connector) error {
 				d.log.Info("connector authenticated", "platform", c.Name())
 				return nil
 			}
-			if len(st.QRPNG) > 0 && !bytes.Equal(st.QRPNG, lastQR) {
+			if len(st.QRPNG) == 0 {
+				d.clearQR(c.Name())
+				lastQR = nil
+			} else if !bytes.Equal(st.QRPNG, lastQR) {
 				d.writeQR(c.Name(), st.QRPNG)
 				lastQR = append(lastQR[:0], st.QRPNG...)
 			}
 		}
+	}
+}
+
+func (d *Daemon) clearQR(platform string) {
+	if d.qrDir == "" {
+		return
+	}
+	path := filepath.Join(d.qrDir, platform+"-qr.png")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		d.log.Error("qr remove failed", "path", path, "err", err)
 	}
 }
 

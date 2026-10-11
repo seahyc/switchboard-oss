@@ -124,7 +124,7 @@ jobs:
               -o "dist/package/${name}" "./cmd/${name}"
           done
           cp README.md LICENSE THIRD_PARTY_NOTICES.md SECURITY.md dist/package/
-          cp -R docs dist/package/
+          cp -R docs assets dist/package/
           mkdir -p dist/package/scripts
           cp scripts/install-standalone.sh scripts/switchboardd-standalone.service dist/package/scripts/
           python3 scripts/package-licenses.py --out dist/package/third-party-licenses

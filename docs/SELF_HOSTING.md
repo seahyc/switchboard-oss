@@ -115,3 +115,9 @@ Stop the daemon before replacing binaries or copying its SQLite database and con
 If startup reports a port conflict, stop the existing process or choose another loopback port with `-addr 127.0.0.1:8718`. Point the CLI at it with `SWITCHBOARD_ADDR=127.0.0.1:8718`. Credential files must have mode `600`.
 
 For agent setup using the CLI and PDF retrieval, see [Agent setup](AGENT_SETUP.md).
+
+### WhatsApp pairing does not finish
+
+A successful phone scan is only the first step. Confirm that `switchboard auth-status whatsapp` reports `connected: true` and `needs_auth: false` before treating setup as complete. Scan the current QR file in your private QR directory; a screenshot copied earlier may have expired.
+
+Expired codes are removed and renewed automatically. A pairing failure clears the QR and leaves its failure stage visible in `auth-status` and the daemon log. For a device-store failure, check that the configured WhatsApp database and its directory are writable by the daemon user. Preserve the database and existing linked sessions. After resolving a failure, restart the daemon to retry pairing with a fresh QR.
