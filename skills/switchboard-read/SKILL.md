@@ -9,11 +9,12 @@ description: Read and browse the user's unified messaging history + social feeds
 social ingestion across WhatsApp, Telegram, Lark, Gmail, Instagram/Messenger, and X).
 It talks to the daemon's HTTP API on `127.0.0.1:8717` and prints **JSON** to stdout.
 
-**This skill is read-only.** Sending, reacting, starting chats, tapping buttons, and
-voting are a SEPARATE skill (`switchboard-act`) because they message real people and go
-through an approval gate. Nothing here ever sends.
+**This skill is read-only.** Sending, reacting, starting chats, tapping buttons, and voting are outside this
+workflow. Do not invoke outbound commands while searching or retrieving files.
 
-Run `switchboard help` for the full usage. All commands emit JSON; pipe to `jq`.
+Before first use, follow [Agent setup](../../docs/AGENT_SETUP.md) to configure the
+local CLI credential and enable attachment retrieval. Run `switchboard help` for
+the installed version's command usage. All commands emit JSON; pipe to `jq`.
 
 ## When to use
 
@@ -28,17 +29,17 @@ Run `switchboard help` for the full usage. All commands emit JSON; pipe to `jq`.
 
 ```
 switchboard list-chats [--platform whatsapp|telegram|lark|gmail|instagram|x] [--since 24h] [--limit 100]
-switchboard read <chat_id> [--since 7d] [--before <ts>] [--limit 50] [--desc]   # --desc = newest-first
+switchboard read <chat_id> [--since 168h] [--before <ts>] [--limit 50] [--desc]   # --desc = newest-first
 switchboard message <id>                                  # one message by full id
-switchboard search "<query>" [--platform P] [--person NAME] [--since 7d] [--limit 50]
-switchboard grep "<regex>"   [--platform P] [--person NAME] [--since 7d] [--limit 50]
+switchboard search "<query>" [--platform P] [--person NAME] [--since 168h] [--limit 50]
+switchboard grep "<regex>"   [--platform P] [--person NAME] [--since 168h] [--limit 50]
 switchboard query-sql "SELECT ... FROM messages WHERE ..."   # READ-ONLY
-switchboard mentions [--since 7d] [--limit 50]            # messages that @-mention the user
+switchboard mentions [--since 168h] [--limit 50]            # messages that @-mention the user
 switchboard get-media <media_id>                          # resolve a stored attachment (path/url/meta)
 ```
 
 `--since` / `--before` accept either an RFC3339 timestamp or a **duration-ago** like
-`24h`, `7d` is not valid — use `168h`. (Go durations: `h`/`m`/`s`.)
+`24h`. `7d` is not valid — use `168h`. (Go durations: `h`/`m`/`s`.)
 
 ## People
 
@@ -74,14 +75,14 @@ not rank or filter them. Prefer `social-activity` over `query-sql` for the socia
 
 ```
 switchboard observability        # per-platform ingest coverage + connector health + lag
-switchboard auth-status [platform]   # connector login/health
-switchboard group-invite --chat <chat_id> [--reset]   # a group's shareable invite link (WhatsApp)
+switchboard auth-status PLATFORM   # connector login/health
+switchboard group-invite --chat <chat_id>   # a group's shareable invite link (WhatsApp)
 ```
 
 ## Tips
 
 - `--addr HOST:PORT` overrides the daemon address (default `127.0.0.1:8717`).
-- Everything is JSON — chain with `jq` (e.g. `switchboard list-chats --json | jq '.[].chat_id'`).
+- Everything is JSON — chain with `jq` (e.g. `switchboard list-chats | jq '.[].chat_id'`).
 - `chat_id` values come from `list-chats` / `search` results; pass them to `read`.
 - For "messages from <person>" use `search --person "<name>"` (it resolves the name to
   the person's identities; the raw `sender_name` is often blank by design).
