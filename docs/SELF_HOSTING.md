@@ -103,4 +103,4 @@ For WhatsApp or Slack, add the connector flags to the unit's `ExecStart` before 
 
 Stop the daemon before replacing binaries or copying its SQLite database and connector state. Protect backups as private message data. Install the next release, review its release notes, then restart. The installer preserves state.
 
-If startup reports a port conflict, stop the existing process or choose another loopback port with `-listen 127.0.0.1:8718`. Point the CLI at it with `SWITCHBOARD_ADDR=http://127.0.0.1:8718`. Credential files must have mode `600`.
+If startup reports a port conflict, stop the existing process or choose another loopback port with `-addr 127.0.0.1:8718`. Point the CLI at it with `SWITCHBOARD_ADDR=127.0.0.1:8718`. Credential files must have mode `600`.
