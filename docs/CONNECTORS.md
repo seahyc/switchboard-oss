@@ -13,10 +13,14 @@ The daemon starts with no connectors. Enable only accounts you intend to archive
 | Instagram browser | `-ig-browser -ig-session-file PATH -ig-proxy HOST:PORT -ig-expected-egress IP` | Read-only, experimental session-based browsing. Requires exported session data and a proxy whose egress matches the configured address. No session or proxy is supplied. |
 | X browser | `-x-browser -x-session-file PATH -x-proxy HOST:PORT -x-expected-egress IP` | Read-only, experimental session-based browsing. Requires exported session data and a proxy whose egress matches the configured address. No session or proxy is supplied. |
 
-The documented standalone starter is [WhatsApp](SELF_HOSTING.md#connect-whatsapp). Slack configuration uses these exact daemon flags:
+The documented standalone starter is [WhatsApp](SELF_HOSTING.md#connect-whatsapp). Add these exact Slack flags to the same `switchboardd` invocation as the database, API token, and media-root flags:
 
 ```sh
-switchboardd \
+~/.local/bin/switchboardd \
+  -db "$HOME/.switchboard/switchboard.db" \
+  -api-token-file "$HOME/.switchboard/api.token" \
+  -qr-dir "$HOME/.switchboard" \
+  -media-root "$HOME/.switchboard/media" \
   -slack-token-file "$HOME/.switchboard/slack.token" \
   -slack-channels C12345678 \
   -slack-poll-interval 1m \
@@ -24,5 +28,7 @@ switchboardd \
 ```
 
 Create the Slack user token in a private file with mode `600` before starting the daemon. The channel allowlist is mandatory. Polling can miss deletions and edits outside its recent overlap; history and rate limits depend on the workspace and Slack API. `Send` and `React` are unsupported by this connector. See [the detailed Slack guide](SLACK.md) before installing an app or granting scopes.
+
+Slack attachments are not downloaded by the connector. For agent CLI and PDF retrieval setup, see [Agent setup](AGENT_SETUP.md).
 
 No connector enables outbound behavior by itself. The daemon's outbound flag is disabled by default. If a caller can send messages, it must enforce per-send approval. gbrain, Honcho, the optional identity matcher, and a model server are separate integrations; none is required for the default archive and CLI flow.

@@ -69,10 +69,19 @@ Stop the empty daemon with Ctrl-C. Restart it with a separate WhatsApp session d
   -db "$HOME/.switchboard/switchboard.db" \
   -api-token-file "$HOME/.switchboard/api.token" \
   -qr-dir "$HOME/.switchboard" \
-  -whatsapp-db "$HOME/.switchboard/whatsapp.db"
+  -whatsapp-db "$HOME/.switchboard/whatsapp.db" \
+  -media-root "$HOME/.switchboard/media"
 ```
 
-The connector starts a QR login and writes the current code to `~/.switchboard/whatsapp-qr.png`; the image refreshes while login is pending. Open that local image in an image viewer, then on your phone open WhatsApp's **Linked devices** screen and scan it. Follow [WhatsApp's linked-device help](https://faq.whatsapp.com/1317564962315842/). The linked device appears as **Switchboard**. The pairing session is stored locally in `whatsapp.db` and reused after restart.
+`-media-root` enables attachment storage. Switchboard downloads attachments
+automatically only when the chat's importance score allows it. The CLI or MCP
+`get-media` operation can request an attachment on demand when its source
+connector can still fetch it. This does not guarantee access to every old file:
+the platform may no longer provide it, and the configured media size cap can
+evict stored files. Switchboard does not index PDF text. An agent must open a
+retrieved PDF with local PDF-reading tools to inspect its contents.
+
+The connector starts a QR login and writes the current code to `~/.switchboard/whatsapp-qr.png`; the image refreshes while login is pending. Open that local image in an image viewer, then on your phone open WhatsApp's **Linked devices** screen and scan it. Follow [WhatsApp's linked-device help](https://faq.whatsapp.com/1317564962315842/). Switchboard identifies itself as a named desktop client. Verify the new entry's name and that `auth-status whatsapp` reports connected; a scan alone does not prove pairing finished. The name is supplied during pairing, so changing it does not rename an existing link. The pairing session is stored locally in `whatsapp.db` and reused after restart.
 
 In the CLI terminal, check status and list chats:
 
@@ -104,3 +113,5 @@ For WhatsApp or Slack, add the connector flags to the unit's `ExecStart` before 
 Stop the daemon before replacing binaries or copying its SQLite database and connector state. Protect backups as private message data. Install the next release, review its release notes, then restart. The installer preserves state.
 
 If startup reports a port conflict, stop the existing process or choose another loopback port with `-addr 127.0.0.1:8718`. Point the CLI at it with `SWITCHBOARD_ADDR=127.0.0.1:8718`. Credential files must have mode `600`.
+
+For agent setup using the CLI and PDF retrieval, see [Agent setup](AGENT_SETUP.md).
