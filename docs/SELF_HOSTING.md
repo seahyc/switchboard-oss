@@ -14,7 +14,7 @@ cd switchboard-oss
 
 The installer builds `switchboardd`, `switchboard`, and `switchboard-mcp` with CGO disabled. It installs binaries under `~/.local/bin` and creates the private state directory `~/.switchboard` with owner-only permissions. It does not start the daemon or connect an account.
 
-For a published binary archive, download the archive and its `.sha256` file from [GitHub Releases](https://github.com/seahyc/switchboard-oss/releases). Verify the checksum before extracting:
+Choose `darwin-arm64` for Apple Silicon, `darwin-amd64` for Intel Macs, `linux-amd64` for most Intel/AMD Linux hosts, or `linux-arm64` for ARM Linux. Download the matching release archive and its `.sha256` file from [GitHub Releases](https://github.com/seahyc/switchboard-oss/releases). Verify the checksum before extracting:
 
 ```sh
 # macOS
@@ -24,7 +24,13 @@ shasum -a 256 -c switchboard-VERSION-OS-ARCH.tar.gz.sha256
 sha256sum -c switchboard-VERSION-OS-ARCH.tar.gz.sha256
 ```
 
-From the extracted archive directory, install the prebuilt binaries without Go:
+Extract into a new directory, then install the prebuilt binaries without Go:
+
+```sh
+mkdir switchboard-release
+tar -xzf switchboard-VERSION-OS-ARCH.tar.gz -C switchboard-release
+cd switchboard-release
+```
 
 ```sh
 ./scripts/install-standalone.sh --bin-dir .
@@ -80,3 +86,21 @@ Messages become available as WhatsApp delivers live messages and any history-syn
 ## Other connectors
 
 See [Connector setup and limitations](CONNECTORS.md) for Slack, Telegram, Lark, Gmail, Meta, Instagram, and X. Connectors require their own credentials or sessions and are disabled unless configured. Keep every token, session, and OAuth file out of shell history and source control. Read the [privacy guide](PRIVACY.md) before enabling capture.
+
+## Run as a Linux user service
+
+After installing with `--systemd`, inspect `~/.config/systemd/user/switchboardd.service`, then run:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now switchboardd.service
+journalctl --user -u switchboardd.service -f
+```
+
+For WhatsApp or Slack, add the connector flags to the unit's `ExecStart` before starting it. Keep token values in private files.
+
+## Update and back up
+
+Stop the daemon before replacing binaries or copying its SQLite database and connector state. Protect backups as private message data. Install the next release, review its release notes, then restart. The installer preserves state.
+
+If startup reports a port conflict, stop the existing process or choose another loopback port with `-listen 127.0.0.1:8718`. Point the CLI at it with `SWITCHBOARD_ADDR=http://127.0.0.1:8718`. Credential files must have mode `600`.
