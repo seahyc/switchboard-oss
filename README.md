@@ -1,5 +1,7 @@
 # Switchboard
 
+<img src="assets/switchboard-icon.png" alt="Switchboard: connected message bubbles" width="112" height="112">
+
 Let your agent search your messages and find details in PDFs or attachments shared in group chats months ago.
 
 Ask it:
