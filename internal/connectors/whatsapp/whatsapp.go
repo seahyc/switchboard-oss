@@ -142,6 +142,8 @@ func New(ctx context.Context, dbPath string, logger waLog.Logger) (*Connector, e
 		chatLabels:        make(map[string]map[string]bool),
 		mediaRetryWaiters: make(map[types.MessageID][]chan *events.MediaRetry),
 	}
+	// DESKTOP is not mapped by whatsmeow's automatic QR client-type selection.
+	c.client.QRClientType = whatsmeow.PairClientElectron
 	c.client.AddEventHandler(c.handleEvent)
 	return c, nil
 }

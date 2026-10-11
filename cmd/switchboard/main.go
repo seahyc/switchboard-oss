@@ -142,7 +142,7 @@ read/browse:
   ig-following-feed [--limit N] | ig-following
   x-following-feed  [--limit N] | x-profile HANDLE [--limit N] | x-ingest [--limit N]
   resolve-person NAME | core-network [--tier T] [--limit N] | list-proposals [--limit N] [--offset N]
-  observability | auth-status [PLATFORM]
+  observability | auth-status PLATFORM
   group-invite --chat CHAT_ID [--reset]   # group's shareable invite link
   honcho-backfill [--max-chats N] [--per-chat N]   # replay inner-tier WA-DM history → Honcho
 
@@ -166,8 +166,8 @@ common: --addr HOST:PORT (default 127.0.0.1:8717)
 
 // --- helpers ---
 
-func newFS(name string) (*flag.FlagSet, *string) {
-	fs := flag.NewFlagSet(name, flag.ExitOnError)
+func newFS(name string) (*commandFlagSet, *string) {
+	fs := &commandFlagSet{FlagSet: flag.NewFlagSet(name, flag.ExitOnError)}
 	addr := fs.String("addr", envAddr(), "daemon API address")
 	return fs, addr
 }
@@ -197,7 +197,7 @@ func parseSince(s string) (time.Time, error) {
 	return t.UTC(), nil
 }
 
-func firstPositional(fs *flag.FlagSet, name string) (string, error) {
+func firstPositional(fs *commandFlagSet, name string) (string, error) {
 	if fs.NArg() < 1 {
 		return "", fmt.Errorf("%s required", name)
 	}
@@ -565,9 +565,9 @@ func cmdGroupInvite(ctx context.Context, args []string) error {
 func cmdAuthStatus(ctx context.Context, args []string) error {
 	fs, addr := newFS("auth-status")
 	fs.Parse(args)
-	platform := ""
-	if fs.NArg() > 0 {
-		platform = fs.Arg(0)
+	platform, err := firstPositional(fs, "platform")
+	if err != nil {
+		return err
 	}
 	r, err := client(*addr).AuthStatus(ctx, platform)
 	if err != nil {

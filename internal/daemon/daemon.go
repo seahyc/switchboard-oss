@@ -10,6 +10,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -1816,7 +1817,7 @@ func (d *Daemon) driveLogin(ctx context.Context, c connectors.Connector) error {
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	var lastQRLen int
+	lastQR := append([]byte(nil), st.QRPNG...)
 	for {
 		select {
 		case <-ctx.Done():
@@ -1830,9 +1831,9 @@ func (d *Daemon) driveLogin(ctx context.Context, c connectors.Connector) error {
 				d.log.Info("connector authenticated", "platform", c.Name())
 				return nil
 			}
-			if len(st.QRPNG) > 0 && len(st.QRPNG) != lastQRLen {
+			if len(st.QRPNG) > 0 && !bytes.Equal(st.QRPNG, lastQR) {
 				d.writeQR(c.Name(), st.QRPNG)
-				lastQRLen = len(st.QRPNG)
+				lastQR = append(lastQR[:0], st.QRPNG...)
 			}
 		}
 	}

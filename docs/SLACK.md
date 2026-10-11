@@ -48,12 +48,57 @@ Official references:
 - [conversations.replies](https://docs.slack.dev/reference/methods/conversations.replies/)
 - [Slack scopes](https://docs.slack.dev/reference/scopes/)
 
-Run with an explicit start bound and private token file:
+Install the standalone binary at `~/.local/bin/switchboardd`. That directory is
+not usually on a service manager's `PATH`, so invoke the binary by its full path
+in service configuration.
+
+Create a private token file without putting the token in shell history. Run
+these commands, then paste the token at the hidden prompt:
 
 ```sh
-switchboardd -slack-token-file ~/.switchboard/slack.token \
+bash -c '
+  umask 077
+  mkdir -p "$HOME/.switchboard"
+  read -r -s -p "Slack user OAuth token: " SLACK_TOKEN || exit 1
+  printf "\n"
+  test -n "$SLACK_TOKEN" || exit 1
+  printf "%s" "$SLACK_TOKEN" > "$HOME/.switchboard/slack.token"
+  unset SLACK_TOKEN
+  chmod 600 "$HOME/.switchboard/slack.token"
+'
+```
+
+Keep the token file out of source control.
+
+Start the daemon with an explicit start bound, channel allowlist, and media
+directory. These are the connector's supported daemon flags:
+
+```sh
+~/.local/bin/switchboardd \
+  -db "$HOME/.switchboard/switchboard.db" \
+  -api-token-file "$HOME/.switchboard/api.token" \
+  -qr-dir "$HOME/.switchboard" \
+  -media-root "$HOME/.switchboard/media" \
+  -slack-token-file "$HOME/.switchboard/slack.token" \
   -slack-channels C12345678,C23456789 -slack-poll-interval 1m \
   -slack-since 2026-10-01T00:00:00Z
+```
+
+After startup, verify the Slack identity and that the allowlisted channels
+appear. Set the CLI token-file path in the same shell. The daemon's generated
+administrator token is in `~/.switchboard/api.token`:
+
+```sh
+export SWITCHBOARD_TOKEN_FILE="$HOME/.switchboard/api.token"
+~/.local/bin/switchboard auth-status slack
+~/.local/bin/switchboard list-chats --platform slack
+```
+
+To search Slack messages, use this command. Putting options first also works
+with v0.1.0:
+
+```sh
+~/.local/bin/switchboard search --platform slack --limit 10 "invoice"
 ```
 
 Optional channel titles use `conversations.info` and require the corresponding
